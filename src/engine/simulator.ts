@@ -158,12 +158,13 @@ export function initiateTransmission(
     arpReq.currentEdgeId = egressLink.id;
     arpReq.edgeDirection = egressLink.sourceDeviceId === srcDevice.id ? 'sourceToTarget' : 'targetToSource';
     arpReq.speed = Math.max(0.02, Math.min(0.08, 10 / (egressLink.latencyMs || 20)));
+    arpReq.pendingPayloadPacket = mainPacket; // Queue payload packet to send once ARP reply is received!
 
     packets.push(arpReq);
 
     newLogs.push(createLog(
       'ARP Cache Miss',
-      `${srcDevice.name} needs MAC address for ${targetLookupIp}. Broadcasting ARP Request (Who has ${targetLookupIp}?)`,
+      `${srcDevice.name} needs MAC address for ${targetLookupIp}. Queuing ${packetType} and broadcasting ARP Request.`,
       'warning',
       'L2',
       arpReq,
@@ -352,6 +353,7 @@ export function stepSimulation(
           arpRep.currentEdgeId = link.id;
           arpRep.edgeDirection = link.sourceDeviceId === arrivalDevice.id ? 'sourceToTarget' : 'targetToSource';
           arpRep.speed = packet.speed;
+          arpRep.pendingPayloadPacket = packet.pendingPayloadPacket;
           generatedPackets.push(arpRep);
 
           newLogs.push(createLog(
@@ -371,6 +373,29 @@ export function stepSimulation(
         if (receivingIface) {
           arrivalDevice.arpTable = updateArpCache(arrivalDevice, packet.srcIp, packet.srcMac, receivingIface.id);
           newLogs.push(createLog('Router ARP Updated', `Router ${arrivalDevice.name} cached ${packet.srcIp} -> ${packet.srcMac}`, 'info', 'L2', packet, arrivalDevice.id));
+
+          // If router was holding a queued packet waiting for this target's MAC:
+          if (packet.pendingPayloadPacket) {
+            const queued: NetworkPacket = {
+              ...packet.pendingPayloadPacket,
+              dstMac: packet.srcMac,
+              srcMac: receivingIface.mac,
+              currentEdgeId: link.id,
+              edgeDirection: link.sourceDeviceId === arrivalDevice.id ? 'sourceToTarget' : 'targetToSource',
+              progress: 0,
+              status: 'in-flight',
+            };
+            generatedPackets.push(queued);
+
+            newLogs.push(createLog(
+              'Router Forwarding Queued Packet',
+              `Router ${arrivalDevice.name} resolved ARP for ${packet.srcIp}. Forwarding queued ${queued.type} to ${queued.dstIp}`,
+              'info',
+              'L3',
+              queued,
+              arrivalDevice.id
+            ));
+          }
         }
         continue;
       }
@@ -437,15 +462,25 @@ export function stepSimulation(
       };
 
       if (!cachedArp) {
-        // Trigger ARP request from router
+        // Router needs ARP resolution on this egress subnet first!
         const routerArp = createArpRequestPacket(arrivalDevice, egressIface, nextTargetIp);
         routerArp.currentEdgeId = egressLink.id;
         routerArp.edgeDirection = egressLink.sourceDeviceId === arrivalDevice.id ? 'sourceToTarget' : 'targetToSource';
         routerArp.speed = forwardedPacket.speed;
+        routerArp.pendingPayloadPacket = forwardedPacket; // hold forwardedPacket until reply returns!
         generatedPackets.push(routerArp);
-      }
 
-      generatedPackets.push(forwardedPacket);
+        newLogs.push(createLog(
+          'Router ARP Resolution',
+          `Router ${arrivalDevice.name} broadcasting ARP request on ${egressIface.name} for target IP ${nextTargetIp}`,
+          'warning',
+          'L2',
+          routerArp,
+          arrivalDevice.id
+        ));
+      } else {
+        generatedPackets.push(forwardedPacket);
+      }
       continue;
     }
 
@@ -464,6 +499,7 @@ export function stepSimulation(
           arpReply.currentEdgeId = link.id;
           arpReply.edgeDirection = link.sourceDeviceId === arrivalDevice.id ? 'sourceToTarget' : 'targetToSource';
           arpReply.speed = packet.speed;
+          arpReply.pendingPayloadPacket = packet.pendingPayloadPacket;
           generatedPackets.push(arpReply);
 
           newLogs.push(createLog(
@@ -490,6 +526,30 @@ export function stepSimulation(
             packet,
             arrivalDevice.id
           ));
+
+          // If there is a queued payload packet waiting for this ARP reply, dispatch it now!
+          if (packet.pendingPayloadPacket) {
+            const queued: NetworkPacket = {
+              ...packet.pendingPayloadPacket,
+              dstMac: packet.srcMac,
+              srcMac: hostIface.mac,
+              currentEdgeId: link.id,
+              edgeDirection: link.sourceDeviceId === arrivalDevice.id ? 'sourceToTarget' : 'targetToSource',
+              progress: 0,
+              status: 'in-flight',
+              hopPath: [arrivalDevice.id],
+            };
+            generatedPackets.push(queued);
+
+            newLogs.push(createLog(
+              'Queued Packet Transmitted',
+              `${arrivalDevice.name} resolved gateway/target MAC (${packet.srcMac}). Releasing queued ${queued.type} to ${queued.dstIp}`,
+              'info',
+              'L3',
+              queued,
+              arrivalDevice.id
+            ));
+          }
         }
         continue;
       }

@@ -100,6 +100,7 @@ export interface NetworkPacket {
   dropReason?: string;
   color?: string;
   parentPacketId?: string; // e.g. ARP request that triggered echo
+  pendingPayloadPacket?: NetworkPacket;
 }
 
 export interface SimulationLog {

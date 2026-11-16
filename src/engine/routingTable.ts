@@ -22,8 +22,8 @@ export function lookupRoute(
     const maskInt = ipToInt(route.mask);
     const subnetInt = ipToInt(route.destinationSubnet);
 
-    // Check if destination matches this subnet
-    if ((destInt & maskInt) === subnetInt) {
+    // Check if destination matches this subnet (use >>> 0 to ensure unsigned 32-bit comparison)
+    if (((destInt & maskInt) >>> 0) === subnetInt) {
       const prefixLength = maskToCidr(route.mask);
       if (
         prefixLength > bestPrefixLength ||

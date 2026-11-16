@@ -61,6 +61,51 @@ describe('Data Communication & Network Protocols', () => {
     expect(sub2).toBeDefined();
   });
 
+  test('Cross-subnet routing end-to-end (Two Subnets via Router)', () => {
+    const twoSubnets = PRESETS.twoSubnets;
+    // Build routes for router-1
+    const routeMap = buildDynamicRoutingTables(twoSubnets.devices, twoSubnets.links);
+    const devicesWithRoutes = twoSubnets.devices.map(d => 
+      d.id === 'router-1' ? { ...d, routingTable: routeMap.get(d.id) } : d
+    );
+
+    // PC-A transmits to PC-B
+    const init = initiateTransmission(
+      devicesWithRoutes,
+      twoSubnets.links,
+      'pc-sub1',
+      'pc-sub2',
+      'ICMP_ECHO_REQ',
+      'Subnet 1 to Subnet 2'
+    );
+
+    let activePackets = init.packets;
+    let devState = devicesWithRoutes;
+    let linkState = twoSubnets.links;
+    let deliveredCount = 0;
+
+    // Run simulation ticks
+    for (let tick = 0; tick < 250; tick++) {
+      if (activePackets.length === 0) break;
+      const stepRes = stepSimulation(devState, linkState, activePackets, 2.0);
+      activePackets = stepRes.packets;
+      devState = stepRes.devices;
+      linkState = stepRes.links;
+      deliveredCount += stepRes.metricsUpdates.deliveredDelta;
+    }
+
+    // Must deliver both: 1) ICMP Request to PC-B, and 2) ICMP Reply back to PC-A!
+    expect(deliveredCount).toBeGreaterThanOrEqual(2);
+
+    // Verify PC-A cached Router Gi0/0 in its ARP table
+    const pcA = devState.find(d => d.id === 'pc-sub1');
+    expect(pcA?.arpTable.some(e => e.ip === '192.168.1.1')).toBe(true);
+
+    // Verify PC-B cached Router Gi0/1 in its ARP table
+    const pcB = devState.find(d => d.id === 'pc-sub2');
+    expect(pcB?.arpTable.some(e => e.ip === '192.168.2.1')).toBe(true);
+  });
+
   test('Longest Prefix Match (LPM) route lookup', () => {
     const dummyRouter: NetworkDevice = {
       id: 'test-router',
