@@ -50,6 +50,8 @@ export const TopologyCanvas: React.FC = () => {
       position: { x: d.x, y: d.y },
       data: d as any,
       selected: d.id === selectedDeviceId,
+      initialWidth: 200,
+      initialHeight: 120,
     }));
   }, [devices, selectedDeviceId]);
 
@@ -123,16 +125,25 @@ export const TopologyCanvas: React.FC = () => {
         <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="#334155" />
         <Controls className="!bg-slate-900/90 !border !border-slate-800 !rounded-xl overflow-hidden [&>button]:!bg-slate-800/80 [&>button]:!border-slate-700 [&>button]:!text-slate-200" />
         <MiniMap
-          nodeStrokeWidth={3}
-          nodeColor={(n) => {
-            const dev = n.data as any;
-            if (dev?.type === 'pc') return '#38bdf8';
-            if (dev?.type === 'router') return '#fbbf24';
-            if (dev?.type === 'switch') return '#34d399';
-            if (dev?.type === 'server') return '#c084fc';
-            return '#94a3b8';
+          nodeStrokeWidth={2}
+          nodeBorderRadius={4}
+          nodeColor={(n: any) => {
+            const dev = n?.data;
+            const type = dev?.type || n?.type;
+            if (type === 'pc') return '#38bdf8';
+            if (type === 'router') return '#fbbf24';
+            if (type === 'switch') return '#34d399';
+            if (type === 'server') return '#c084fc';
+            return '#60a5fa';
           }}
-          className="!bg-slate-900/80 !border !border-slate-800 !rounded-xl overflow-hidden"
+          nodeStrokeColor="#0f172a"
+          bgColor="#0b1120"
+          maskColor="rgba(15, 23, 42, 0.75)"
+          maskStrokeColor="#38bdf8"
+          maskStrokeWidth={1.5}
+          pannable
+          zoomable
+          className="!bg-slate-950/90 !border !border-slate-800 !rounded-xl overflow-hidden shadow-2xl"
         />
 
         {/* Floating Quick Action Palette */}
