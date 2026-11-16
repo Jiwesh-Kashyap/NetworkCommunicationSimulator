@@ -51,7 +51,7 @@ export const App: React.FC = () => {
   }, [isPlaying, activePackets.length, setIsPlaying]);
 
   return (
-    <div className="flex flex-col w-screen h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
+    <div className="flex flex-col w-full max-w-full h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
       {/* Top Application Toolbar */}
       <PlaybackToolbar />
 
